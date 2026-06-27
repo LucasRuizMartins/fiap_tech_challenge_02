@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import pandas as pd
 
@@ -22,14 +23,34 @@ def gerar_df_dic(ano: int | str, nome_tabela: str) -> tuple[pd.DataFrame, pd.Dat
     dicionario.columns = dicionario.iloc[0].to_list()
     dicionario = dicionario[1:]
     
-    try:
+
+    #Foi necessario criar esse tratamento porque o nome em 2024 era diferente gerando problema na hora de mapear o dicionario pelo index
+    possiveis_nomes = ['Variável', 'Variavel', 'Nome da Variável', 'Nome da Variavel']
+    coluna_encontrada = next((col for col in dicionario.columns if col in possiveis_nomes), None)
+    
+    if coluna_encontrada:
+        if coluna_encontrada != 'Variável':
+            dicionario.rename(columns={coluna_encontrada: 'Variável'}, inplace=True)
         dicionario.set_index('Variável', inplace=True)
-    except Exception:
-        print('coluna variavel nao encontrada no dicionario')
-    # Converte todas as colunas e o índice do dicionário para string para evitar tipos mistos
+    else:
+        print(f"Aviso: Nenhuma coluna de variável identificada na tabela {nome_tabela}. Colunas: {list(dicionario.columns)}")
+        
     dicionario = dicionario.astype(str)
 
     return raw, dicionario
+
+
+def carregar_parquet_local(ano: int | str, nome_tabela: str, ler_dicionario: bool = False) -> pd.DataFrame:
+    """
+    Carrega um arquivo Parquet específico (dados ou dicionário) local a partir do ano e nome da tabela.
+    """
+    pasta_tipo = "dicionario" if ler_dicionario else "dados"
+    nome_arquivo = f"dicionario_{nome_tabela}.parquet" if ler_dicionario else f"{nome_tabela}.parquet"
+    
+    caminho = Path(f"../data/bronze/ano={ano}/{pasta_tipo}/{nome_arquivo}")
+    
+    print(f"Lendo Parquet em: {caminho}")
+    return pd.read_parquet(caminho)
 
 
 
@@ -42,16 +63,16 @@ A razão para usar BytesIO aqui é que o método to_parquet espera um objeto de 
 Em vez de gravar os dados em um arquivo físico no sistema de arquivos local e, em seguida, lê-los de volta para enviá-los para o S3, o BytesIO permite que você escreva os dados diretamente em um buffer de memória.
 """
 
-def converter_para_parquet_bytes(df: pd.DataFrame) -> bytes:
+def converter_para_parquet_bytes(df: pd.DataFrame,index: bool = True) -> bytes:
     """
     Converte um DataFrame para o formato Parquet na memória e retorna seus bytes.
     """
     parquet_buffer = BytesIO()
-    df.to_parquet(parquet_buffer, index=False)
+    df.to_parquet(parquet_buffer, index=index)
     return parquet_buffer.getvalue()
 
 
-def salvar_parquet_local(df: pd.DataFrame, caminho_destino: Path | str) -> None:
+def salvar_parquet_local(df: pd.DataFrame, caminho_destino: Path | str, index: bool = True) -> None:
     """
     Salva um DataFrame localmente no formato Parquet.
     Cria as pastas pai automaticamente caso elas não existam (ex: pasta 'bronze').
@@ -60,7 +81,7 @@ def salvar_parquet_local(df: pd.DataFrame, caminho_destino: Path | str) -> None:
     # Garante que a pasta pai exista antes de salvar (ex: data/bronze/)
     caminho_destino.parent.mkdir(parents=True, exist_ok=True)
     
-    df.to_parquet(caminho_destino, index=False)
+    df.to_parquet(caminho_destino, index=index)  
     print(f"Arquivo salvo localmente em: {caminho_destino}")
 
 
