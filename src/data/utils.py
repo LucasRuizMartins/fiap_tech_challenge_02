@@ -13,13 +13,25 @@ def gerar_df_dic(ano: int | str, nome_tabela: str) -> tuple[pd.DataFrame, pd.Dat
     path_dados = Path(f'../data/raw/dados_{ano}')
     path_alunos = path_dados / 'DADOS' / f'{nome_tabela}.csv'
     
-    raw = pd.read_csv(path_alunos, sep=";", encoding="latin-1")
+    try:
+        raw = pd.read_csv(path_alunos, sep=";", encoding="latin-1")
+    except PermissionError as e:
+        raise PermissionError(
+            f"Erro de permissão ao ler os dados em '{path_alunos}'. "
+            f"Certifique-se de que o arquivo não está aberto no Excel ou em outro programa."
+        ) from e
     
     path_dicionario = path_dados / 'DICIONÁRIO' / f'Dicionario_Microdados_AEEB_{ano}.xlsx'
     
     print(f"Lendo dicionário em: {path_dicionario}")
     
-    dicionario = pd.read_excel(path_dicionario, sheet_name=nome_tabela)   
+    try:
+        dicionario = pd.read_excel(path_dicionario, sheet_name=nome_tabela)   
+    except PermissionError as e:
+        raise PermissionError(
+            f"Erro de permissão ao ler o dicionário em '{path_dicionario}'. "
+            f"Certifique-se de que o arquivo não está aberto no Excel ou em outro programa."
+        ) from e
     dicionario.columns = dicionario.iloc[0].to_list()
     dicionario = dicionario[1:]
     
