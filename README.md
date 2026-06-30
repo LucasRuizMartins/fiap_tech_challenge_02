@@ -69,6 +69,28 @@ Amazon S3 (Bronze) ──> Amazon Glue (Spark/Transformador) ──> Amazon S3 (
 
 ---
 
+## Padrão de Processamento: Stream-Static Join
+
+O pipeline implementa o padrão arquitetural **Stream-Static Join**, onde cada tabela é processada de acordo com a sua natureza de atualização:
+
+| Tabela | Modo | Motivo |
+|:---|:---:|:---|
+| `TS_ESTADO` | **Batch (Estático)** | Tabela de referência com médias estaduais por tipo de rede. Publicada 1x por ano pelo INEP. Carregada uma única vez na memória no início do Consumer. |
+| `TS_MUNICIPIO` | **Batch (Estático)** | Tabela de referência com médias municipais por tipo de rede. Mesmo ciclo anual do INEP. Carregada uma única vez na memória no início do Consumer. |
+| `TS_ALUNO` | **Streaming (Dinâmico)** | Cada linha representa o resultado individual de um aluno. Processada evento a evento via Kafka, simulando o recebimento em tempo real das notas conforme as provas são finalizadas. |
+
+```text
+                    ┌── TS_MUNICIPIO (Batch) ──┐
+                    │                          ▼
+TS_ALUNO ──► Kafka ──► Consumer ──► Stream-Static Join ──► Silver (Parquet)
+                    │                          ▲
+                    └──── TS_ESTADO (Batch) ───┘
+```
+
+> As tabelas estáticas (`TS_ESTADO` e `TS_MUNICIPIO`) são carregadas **uma única vez** em memória quando o Consumer inicia. Os eventos de alunos chegam continuamente pelo Kafka e são enriquecidos contra essas dimensões estáticas em cada micro-batch processado.
+
+---
+
 ## Documentação do Módulo de Utilitários (`src/data/utils.py`)
 
 O arquivo utils.py  centraliza todas as funções utilitárias do pipeline de ingestão e leitura da base de dados do INEP.
