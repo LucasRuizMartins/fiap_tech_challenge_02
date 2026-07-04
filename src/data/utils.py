@@ -1,4 +1,5 @@
 
+from _pytest import pytester_assertions
 from pathlib import Path
 import pandas as pd
 
@@ -189,3 +190,28 @@ def enriquecer_alunos_silver(df_alunos: pd.DataFrame, municipio_dim: pd.DataFram
     df_silver = df_silver.drop(columns=colunas_para_remover, errors='ignore')
     
     return df_silver
+
+
+#AWS 
+import boto3
+import dotenv
+import os 
+from botocore.exceptions import ClientError
+
+dotenv.load_dotenv()
+
+# Criando a cessão 
+
+def iniciar_cessao_aws():
+    ID_CONTA = os.getenv("ID_CONTA")
+    AWS_REGION = os.getenv("AWS_REGION")
+    AWS_ACCESS_KEY_ID=os.getenv("AWS_ACESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY=os.getenv("AWS_SECRET_ACESS_KEY")
+
+
+    session = boto3.Session(
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name=AWS_REGION
+    )
+    return session
