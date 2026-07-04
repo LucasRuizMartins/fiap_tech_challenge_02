@@ -94,7 +94,7 @@ def salvar_parquet_local(df: pd.DataFrame, caminho_destino: Path | str, index: b
     caminho_destino.parent.mkdir(parents=True, exist_ok=True)
     
     df.to_parquet(caminho_destino, index=index)  
-    print(f"Arquivo salvo localmente em: {caminho_destino}")
+    #print(f"Arquivo salvo localmente em: {caminho_destino}")
 
 
 def salvar_parquet_s3(s3_client, bucket: str, chave_s3: str, parquet_bytes: bytes) -> None:
@@ -106,7 +106,7 @@ def salvar_parquet_s3(s3_client, bucket: str, chave_s3: str, parquet_bytes: byte
         Key=chave_s3,
         Body=parquet_bytes
     )
-    print(f"Arquivo enviado para o S3: s3://{bucket}/{chave_s3}")
+   # print(f"Arquivo enviado para o S3: s3://{bucket}/{chave_s3}")
 
 
  
