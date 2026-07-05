@@ -12,3 +12,4 @@ numpy
 python-dotenv>=0.5.1
 openpyxl
 pyspark
+confluent_kafka

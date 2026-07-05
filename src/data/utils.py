@@ -1,8 +1,10 @@
 
-from _pytest import pytester_assertions
 from pathlib import Path
 import pandas as pd
 
+
+
+#-----------Leitura CSV
 def gerar_df_dic(ano: int | str, nome_tabela: str) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Carrega o dataframe de dados e o respectivo dicionário a partir de um ano e do nome da tabela.
@@ -22,6 +24,8 @@ def gerar_df_dic(ano: int | str, nome_tabela: str) -> tuple[pd.DataFrame, pd.Dat
             f"Certifique-se de que o arquivo não está aberto no Excel ou em outro programa."
         ) from e
     
+
+    #nome alterado para DICIONARIO a base possui acento 
     path_dicionario = path_dados / 'DICIONARIO' / f'Dicionario_Microdados_AEEB_{ano}.xlsx'
     
     print(f"Lendo dicionário em: {path_dicionario}")
@@ -53,6 +57,14 @@ def gerar_df_dic(ano: int | str, nome_tabela: str) -> tuple[pd.DataFrame, pd.Dat
     return raw, dicionario
 
 
+
+#-----PARQUET
+from io import BytesIO
+"""
+A razão para usar BytesIO aqui é que o método to_parquet espera um objeto de arquivo, e o BytesIO fornece uma maneira conveniente de criar um objeto de arquivo temporário em memória.
+Em vez de gravar os dados em um arquivo físico no sistema de arquivos local e, em seguida, lê-los de volta para enviá-los para o S3, o BytesIO permite que você escreva os dados diretamente em um buffer de memória.
+"""
+
 def carregar_parquet_local(ano: int | str, nome_tabela: str, ler_dicionario: bool = False) -> pd.DataFrame:
     """
     Carrega um arquivo Parquet específico (dados ou dicionário) local a partir do ano e nome da tabela.
@@ -65,16 +77,6 @@ def carregar_parquet_local(ano: int | str, nome_tabela: str, ler_dicionario: boo
     print(f"Lendo Parquet em: {caminho}")
     return pd.read_parquet(caminho)
 
-
-
-
-#--------------------------
-
-from io import BytesIO
-"""
-A razão para usar BytesIO aqui é que o método to_parquet espera um objeto de arquivo, e o BytesIO fornece uma maneira conveniente de criar um objeto de arquivo temporário em memória.
-Em vez de gravar os dados em um arquivo físico no sistema de arquivos local e, em seguida, lê-los de volta para enviá-los para o S3, o BytesIO permite que você escreva os dados diretamente em um buffer de memória.
-"""
 
 def converter_para_parquet_bytes(df: pd.DataFrame,index: bool = True) -> bytes:
     """
@@ -111,7 +113,7 @@ def salvar_parquet_s3(s3_client, bucket: str, chave_s3: str, parquet_bytes: byte
 
 
  
-#-----------------BRONZE - SILVER-----------------
+#-----------------BRONZE -> SILVER-----------------
 
 def preparar_dimensoes_silver(ano: int | str, path_bronze: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -192,11 +194,11 @@ def enriquecer_alunos_silver(df_alunos: pd.DataFrame, municipio_dim: pd.DataFram
     return df_silver
 
 
-#AWS 
+#---------------AWS 
 import boto3
 import dotenv
 import os 
-from botocore.exceptions import ClientError
+
 
 dotenv.load_dotenv()
 
