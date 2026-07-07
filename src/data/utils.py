@@ -112,6 +112,41 @@ def salvar_parquet_s3(s3_client, bucket: str, chave_s3: str, parquet_bytes: byte
    # print(f"Arquivo enviado para o S3: s3://{bucket}/{chave_s3}")
 
 
+#-----------QUALIDADE-------------
+import pandera as pa
+
+silver_schema = pa.DataFrameSchema(
+    columns={
+        "NU_ANO_AVALIACAO": pa.Column(
+            "Int64", 
+            checks=pa.Check.isin([2023, 2024, 2025]), 
+            coerce=True
+        ),
+        "VL_PROFICIENCIA_LP": pa.Column(
+            float, 
+            nullable=True, 
+            checks=pa.Check.between(0, 1000), 
+            coerce=True
+        ),
+        "CO_UF": pa.Column(
+            "Int64",  #Int64 para aceitar os nulos
+            coerce=True
+        ),
+        "DESVIO_MEDIA_MUNICIPIO": pa.Column(
+            float, 
+            nullable=True, 
+            coerce=True
+        )
+    },
+    # Permite que o DataFrame tenha outras colunas 
+    # coerce = True transforma os tipos de acordo com o schema inferido
+    strict=False 
+)
+
+
+
+
+
  
 #-----------------BRONZE -> SILVER-----------------
 
@@ -190,7 +225,11 @@ def enriquecer_alunos_silver(df_alunos: pd.DataFrame, municipio_dim: pd.DataFram
         'CO_BLOCO_4', 'TX_RESPOSTA_BLOCO_4', 'TX_GABARITO_BLOCO_4'
     ]
     df_silver = df_silver.drop(columns=colunas_para_remover, errors='ignore')
-    
+    try:
+        df_silver = silver_schema.validate(df_silver)
+    except pa.errors.SchemaErrors as err:
+        print(f"[AVISO DE QUALIDADE DE DADOS] Falha na validação da Silver:\n{err}")
+
     return df_silver
 
 
