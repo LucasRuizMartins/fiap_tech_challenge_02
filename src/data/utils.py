@@ -57,6 +57,107 @@ def gerar_df_dic(ano: int | str, nome_tabela: str) -> tuple[pd.DataFrame, pd.Dat
     return raw, dicionario
 
 
+def _carregar_xlsx_duplo_cabecalho(
+    path_xlsx: Path,
+    colunas_texto: set | None = None,
+    nome_exibicao: str = ''
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Função interna reutilizável para carregar arquivos XLSX com duplo cabeçalho:
+      - Linha 0: nomes legíveis (ex: 'ANO DA AVALIAÇÃO')
+      - Linha 1: nomes programáticos (ex: 'ANO', 'CD_UF')
+      - Linha 2+: dados reais
+    Retorna (df_dados, df_dicionario).
+    """
+    if colunas_texto is None:
+        colunas_texto = {'SIGLA_UF', 'SG_UF', 'NOME_UF', 'NO_MUNICIPIO', 'REDE', 'NO_TP_REDE'}
+
+    # Adiciona automaticamente qualquer coluna cujo nome contenha 'NIVEL'
+    # (ex: NIVEIS_ALFABETIZACAO_2023, 2024, 2025 — valores mistos de int e '-')
+    def _eh_coluna_texto(col, fixas):
+        return col in fixas or 'NIVEL' in str(col).upper()
+
+    try:
+        xl = pd.ExcelFile(path_xlsx)
+    except PermissionError as e:
+        raise PermissionError(
+            f"Erro de permissão ao abrir '{path_xlsx}'. "
+            f"Certifique-se de que o arquivo não está aberto no Excel."
+        ) from e
+
+    aba_dados = xl.sheet_names[0]
+    aba_dic   = xl.sheet_names[1]
+
+    # --- Dados ---
+    # O XLSX possui 2 linhas de cabeçalho antes dos dados reais:
+    #   linha 0: nomes legíveis (ex: 'ANO DA AVALIAÇÃO', 'CÓDIGO UF')
+    #   linha 1: nomes programáticos (ex: 'ANO', 'CD_UF', 'SAEB_2019')
+    #   linha 2+: dados reais
+    # Usamos os nomes programáticos (linha 1) como colunas e pulamos as 2 linhas de cabeçalho.
+    raw = xl.parse(aba_dados, header=None)
+    raw.columns = raw.iloc[1].tolist()   # linha 1 → nomes programáticos como colunas
+    raw = raw.iloc[2:].reset_index(drop=True)   # remove as 2 linhas de cabeçalho
+
+    # --- Coerção de tipos ---
+    # Algumas células numéricas contêm strings como '-', '- ' ou '> 80'
+    # (resultado indisponível ou meta já atingida). As colunas podem variar
+    # entre os anos, então tentamos converter todas as colunas object para numérico.
+    # Colunas puramente textuais ficam excluídas e permanecem como object.
+    for col in raw.columns:
+        if not _eh_coluna_texto(col, colunas_texto):
+            convertida = pd.to_numeric(raw[col], errors='coerce')
+            # Só substitui se a conversão trouxe algum valor numérico válido
+            if convertida.notna().any():
+                raw[col] = convertida
+
+    # --- Dicionário ---
+    dic = xl.parse(aba_dic, header=None)
+    # Remove colunas e linhas totalmente vazias
+    dic = dic.dropna(how='all', axis=0).dropna(how='all', axis=1).reset_index(drop=True)
+    # Torna a primeira coluna com conteúdo o índice de nomes de variáveis
+    if dic.shape[1] >= 2:
+        dic.columns = ['Variável', 'Descrição'] + [f'Col{i}' for i in range(2, dic.shape[1])]
+        dic = dic.set_index('Variável')
+    dic = dic.astype(str)
+
+    exibicao = nome_exibicao or path_xlsx.stem
+    print(f"{exibicao} {path_xlsx.parent.parent.name} → dados: {raw.shape} | dicionário: {dic.shape}")
+    return raw, dic
+
+
+def gerar_df_resultados_metas(ano: int | str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Carrega o arquivo RESULTADOS_METAS.xlsx (nível UF e Brasil) de um determinado ano.
+    O arquivo possui duas abas:
+      - Aba 0 (dados): resultados e metas de alfabetização por UF e Brasil.
+      - Aba 1 (variáveis): dicionário de variáveis.
+
+    Retorna uma tupla (df_dados, df_dicionario).
+
+    Exemplo de uso:
+        df, dic = gerar_df_resultados_metas(2023)
+    """
+    path_xlsx = Path(f'../data/raw/dados_{ano}') / 'DADOS' / 'RESULTADOS_METAS.xlsx'
+    return _carregar_xlsx_duplo_cabecalho(path_xlsx, nome_exibicao='RESULTADOS_METAS')
+
+
+def gerar_df_resultados_metas_municipio(ano: int | str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Carrega o arquivo RESULTADOS_METAS_MUNICIPIO.xlsx (nível município) de um determinado ano.
+    O arquivo possui duas abas:
+      - Aba 0 (dados): resultados e metas de alfabetização por município.
+      - Aba 1 (variáveis): dicionário de variáveis.
+
+    Retorna uma tupla (df_dados, df_dicionario).
+
+    Exemplo de uso:
+        df, dic = gerar_df_resultados_metas_municipio(2023)
+    """
+    path_xlsx = Path(f'../data/raw/dados_{ano}') / 'DADOS' / 'RESULTADOS_METAS_MUNICIPIO.xlsx'
+    return _carregar_xlsx_duplo_cabecalho(path_xlsx, nome_exibicao='RESULTADOS_METAS_MUNICIPIO')
+
+
+
 
 #-----PARQUET
 from io import BytesIO

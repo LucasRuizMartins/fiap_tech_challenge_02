@@ -3,14 +3,13 @@
 
 # external requirements
 click
-Sphinx
-coverage
 awscli
 flake8
 pandas
-numpy
+numpy  
 python-dotenv>=0.5.1
 openpyxl
-pyspark
 confluent_kafka
 pandera
+boto3  
+pyarrow  # Required: engine for pandas to read and write .parquet files
