@@ -112,6 +112,41 @@ def salvar_parquet_s3(s3_client, bucket: str, chave_s3: str, parquet_bytes: byte
    # print(f"Arquivo enviado para o S3: s3://{bucket}/{chave_s3}")
 
 
+#-----------QUALIDADE-------------
+import pandera as pa
+
+silver_schema = pa.DataFrameSchema(
+    columns={
+        "NU_ANO_AVALIACAO": pa.Column(
+            "Int64", 
+            checks=pa.Check.isin([2023, 2024, 2025]), 
+            coerce=True
+        ),
+        "VL_PROFICIENCIA_LP": pa.Column(
+            float, 
+            nullable=True, 
+            checks=pa.Check.between(0, 1000), 
+            coerce=True
+        ),
+        "CO_UF": pa.Column(
+            "Int64",  #Int64 para aceitar os nulos
+            coerce=True
+        ),
+        "DESVIO_MEDIA_MUNICIPIO": pa.Column(
+            float, 
+            nullable=True, 
+            coerce=True
+        )
+    },
+    # Permite que o DataFrame tenha outras colunas 
+    # coerce = True transforma os tipos de acordo com o schema inferido
+    strict=False 
+)
+
+
+
+
+
  
 #-----------------BRONZE -> SILVER-----------------
 
@@ -190,7 +225,11 @@ def enriquecer_alunos_silver(df_alunos: pd.DataFrame, municipio_dim: pd.DataFram
         'CO_BLOCO_4', 'TX_RESPOSTA_BLOCO_4', 'TX_GABARITO_BLOCO_4'
     ]
     df_silver = df_silver.drop(columns=colunas_para_remover, errors='ignore')
-    
+    try:
+        df_silver = silver_schema.validate(df_silver)
+    except pa.errors.SchemaErrors as err:
+        print(f"[AVISO DE QUALIDADE DE DADOS] Falha na validação da Silver:\n{err}")
+
     return df_silver
 
 
@@ -217,3 +256,123 @@ def iniciar_cessao_aws():
         region_name=AWS_REGION
     )
     return session
+
+#-- carregar parquet por camada do s3
+def carregar_parquet_s3(
+    s3_client,
+    bucket: str,
+    ano: int,
+    nome_tabela: str,
+    camada: str = "bronze",
+    ler_dicionario: bool = False,
+) -> pd.DataFrame:
+    """
+    Carrega um arquivo Parquet do S3.
+
+    Estrutura esperada:
+
+    bronze/
+        ano=2025/
+            dados/
+                TS_ALUNO.parquet
+
+    ou
+
+    bronze/
+        ano=2025/
+            dicionario/
+                dicionario_TS_ALUNO.parquet
+    """
+
+    pasta = "dicionario" if ler_dicionario else "dados"
+
+    arquivo = (
+        f"dicionario_{nome_tabela}.parquet"
+        if ler_dicionario
+        else f"{nome_tabela}.parquet"
+    )
+
+    chave = f"{camada}/ano={ano}/{pasta}/{arquivo}"
+
+    print(f"Lendo: s3://{bucket}/{chave}")
+
+    try:
+
+        obj = s3_client.get_object(
+            Bucket=bucket,
+            Key=chave
+        )
+
+        return pd.read_parquet(
+            BytesIO(obj["Body"].read())
+        )
+
+    except s3_client.exceptions.NoSuchKey:
+        raise FileNotFoundError(
+            f"Arquivo não encontrado:\n"
+            f"s3://{bucket}/{chave}"
+        )
+
+    except Exception as e:
+        raise RuntimeError(
+            f"Erro ao ler {chave} do bucket {bucket}.\n{e}"
+        )
+
+#- salvar parquet por camada no s3
+
+from io import BytesIO
+import pandas as pd
+
+
+def salvar_parquet_s3(
+    s3_client,
+    bucket: str,
+    df: pd.DataFrame,
+    ano: int,
+    tabela: str,
+    camada: str = "silver",
+    ler_dicionario: bool = False,
+    index: bool = False
+) -> str:
+    """
+    Salva um DataFrame em formato Parquet no S3.
+
+    Estrutura:
+        camada/
+            ano=2025/
+                dados/
+                    TS_ALUNO.parquet
+
+    ou
+
+        camada/
+            ano=2025/
+                dicionario/
+                    dicionario_TS_ALUNO.parquet
+    """
+
+    pasta = "dicionario" if ler_dicionario else "dados"
+
+    arquivo = (
+        f"dicionario_{tabela}.parquet"
+        if ler_dicionario
+        else f"{tabela}.parquet"
+    )
+
+    chave = f"{camada}/ano={ano}/{pasta}/{arquivo}"
+
+    buffer = BytesIO()
+
+    df.to_parquet(buffer, index=index)
+
+    buffer.seek(0)
+
+    s3_client.put_object(
+        Bucket=bucket,
+        Key=chave,
+        Body=buffer.getvalue()
+    )
+
+    print(f"Arquivo salvo: s3://{bucket}/{chave}")
+
+    return chave

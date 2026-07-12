@@ -1,5 +1,4 @@
 # tech_challenge_02
-==============================
 
 Segundo projeto de Data Science da Pós Tech FIAP — Pipeline de Dados com Arquitetura Medallion + Streaming via Kafka e AWS Lambda.
 
@@ -47,9 +46,12 @@ Segundo projeto de Data Science da Pós Tech FIAP — Pipeline de Dados com Arqu
 
 ## Fluxo da Arquitetura de Dados
 
-O projeto implementa uma arquitetura **Medallion + Serverless** organizada em dois fluxos principais:
+O projeto implementa uma arquitetura **Medallion** híbrida (Streaming + Batch):
 
-### Fluxo 1 — Ingestão em Streaming: Bronze ➔ Silver (Kafka + AWS Lambda)
+### 1. Ingestão & Enriquecimento (Bronze ➔ Silver) — IMPLEMENTADO
+O processamento da camada Bronze para a Silver pode ser executado em dois modos:
+* **Modo Batch (Local):** Processa o histórico completo de 2023, 2024 e 2025 diretamente no notebook `02 - pipeline_bronze_silver_local.ipynb`.
+* **Modo Streaming (AWS):** Envia dados do produtor local via Kafka para uma função **AWS Lambda** que consome, enriquece (Stream-Static Join) e salva na camada Silver do S3 em tempo real.
 
 ```text
 [ Computador Local ]                        [ AWS Cloud - VPC: fiap-msk-vpc ]
@@ -79,11 +81,10 @@ O projeto implementa uma arquitetura **Medallion + Serverless** organizada em do
                                              AWS STS / Lambda API
 ```
 
-### Fluxo 2 — Ingestão em Batch: Silver ➔ Gold
-
-```
-Amazon S3 (Bronze) ──► AWS Glue Job (Spark Batch) ──► Amazon S3 (Silver/Gold)
-```
+### 2. Agregações Analíticas (Silver ➔ Gold) — PROPOSTA / TRABALHO FUTURO
+A leitura e consolidação inicial da Silver a partir do S3 já está mapeada via Pandas no notebook `04 - pipeline_silver_gold.ipynb`. Como trabalho futuro para produção, propõe-se:
+* **Amazon Athena + Glue Data Catalog:** Criação de queries SQL diretas no S3 para gerar tabelas analíticas Gold (ex: médias consolidadas por UF e Município), minimizando custos (FinOps) e complexidade de infraestrutura.
+* **Alternative (AWS Glue Job):** Caso o volume de dados escale para centenas de gigabytes, um Glue Job (Spark Batch) poderá ser agendado para consolidar os micro-lotes da Silver em tabelas Gold.
 
 ---
 
@@ -136,6 +137,23 @@ O arquivo [`utils.py`](src/data/utils.py) centraliza todas as funções utilitá
 ### Funções de Infraestrutura AWS
 
 *   **`iniciar_cessao_aws()`**: Cria e retorna uma `boto3.Session` autenticada usando as credenciais do `.env`: `AWS_ACESS_KEY_ID`, `AWS_SECRET_ACESS_KEY` e `AWS_REGION`.
+
+---
+
+## Processo de Qualidade de Dados (Data Quality)
+
+O pipeline implementa testes automáticos de qualidade de dados na transição **Bronze ➔ Silver** utilizando a biblioteca **Pandera** (declarada em `requirements.txt`). O objetivo é capturar e tratar eventuais falhas de schema ou lixo de integração antes que os dados poluam a camada Silver.
+
+### Schema de Validação (`silver_schema`)
+Localizado em `src/data/utils.py`, o schema é aplicado na função `enriquecer_alunos_silver()` e valida as seguintes expectativas:
+
+*   **`NU_ANO_AVALIACAO`:** Coagido para tipo numérico Pandas `"Int64"` (para aceitar nulos se necessário) e validado para garantir que pertence estritamente aos anos analisados (`2023`, `2024`, `2025`).
+*   **`VL_PROFICIENCIA_LP`:** Tipo `float`, aceita nulos (`nullable=True`) para acomodar alunos faltantes e valida se os valores estão dentro do intervalo coerente da avaliação (entre `0` e `1000`).
+*   **`CO_UF`:** Tipo `"Int64"`, com coação automática (`coerce=True`) para garantir consistência numérica no cruzamento de dados.
+*   **`DESVIO_MEDIA_MUNICIPIO`:** Tipo `float`, validado após o cálculo da junção para garantir que os cálculos de desvios foram gerados com tipos coerentes.
+
+
+> O schema está configurado com `strict=False`. Isso permite a entrada de novas colunas sem causar erros na verificação (valida apenas as chaves estruturais). Em caso de desconformidade, um aviso explicativo é impresso no console (`[AVISO DE QUALIDADE DE DADOS]`) sem interromper a execução do fluxo batch ou streaming.
 
 ---
 
