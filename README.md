@@ -147,8 +147,8 @@ O arquivo [`utils.py`](src/data/utils.py) centraliza todas as funções utilitá
 
 *   **`enriquecer_alunos_silver(df_alunos, municipio_dim, uf_dim)`**: Aplica o merge duplo (alunos ← município ← UF), calcula colunas derivadas (`DESVIO_MEDIA_MUNICIPIO`, `DESVIO_MEDIA_UF`) e remove colunas inativas (redes zeradas e Bloco 4 das provas). Compatível tanto com a base completa (batch) quanto com micro-lotes (streaming).
 
-*   carregar_parquet_s3(s3_client, bucket: str, ano: int, nome_tabela: str, camada: str, ler_dicionario: bool = False)
-
+*   **`carregar_parquet_s3(s3_client, bucket: str, ano: int, nome_tabela: str, camada: str, ler_dicionario: bool = False)`**:Faz a carga do arquivo parquet desejado na camada escolhida.
+  
 ### Funções de Infraestrutura AWS
 
 *   **`iniciar_cessao_aws()`**: Cria e retorna uma `boto3.Session` autenticada usando as credenciais do `.env`: `AWS_ACESS_KEY_ID`, `AWS_SECRET_ACESS_KEY` e `AWS_REGION`.
@@ -158,6 +158,7 @@ O arquivo [`utils.py`](src/data/utils.py) centraliza todas as funções utilitá
 ## Processo de Qualidade de Dados (Data Quality)
 
 O pipeline implementa testes automáticos de qualidade de dados na transição **Bronze ➔ Silver** utilizando a biblioteca **Pandera** (declarada em `requirements.txt`). O objetivo é capturar e tratar eventuais falhas de schema ou lixo de integração antes que os dados poluam a camada Silver.
+Além disso, ele gera um relatóriode Data Quality da exceção.
 
 ### Schema de Validação (`silver_schema`)
 Localizado em `src/data/utils.py`, o schema é aplicado na função `enriquecer_alunos_silver()` e valida as seguintes expectativas:
@@ -213,6 +214,15 @@ Os notebooks estão organizados sequencialmente pelas etapas do pipeline:
 *   **Volume processado confirmado:** 1.747.439 (2023) · 2.120.560 (2024) · 2.222.792 (2025) registros.
 
 ### `02 - pipeline_bronze_silver.ipynb`  
+**Faz o ETL:**
+*        Extrai os dados da camada bronze do S3, incluindo os dicinários
+*        trata: aplica mapas,
+*        aplica os qualities,
+*        salva as tabelas resultantes, tratasa, na camada silver
+*        e gera e grava relatórios de qualidade e metadados
+*        gera um catálogo de dados
+*    <img width="882" height="581" alt="Captura de Tela 2026-07-13 às 22 43 14" src="https://github.com/user-attachments/assets/54aada1a-22df-40d6-9fe2-df34fd6e4f2a" />
+
 
 ### `03 - pipeline_bronze_silver_kafka.ipynb`
 **Prototipagem e teste do fluxo de streaming** com Kafka (local via Docker + remoto via EC2):
@@ -225,7 +235,26 @@ Os notebooks estão organizados sequencialmente pelas etapas do pipeline:
 **Leitura e consolidação da camada Silver** a partir do S3:
 *   Define `ler_silver_s3(ano)` que autentica via `iniciar_cessao_aws`, lista todos os arquivos Parquet do prefixo `prata/ano=YYYY/` e os concatena em um único DataFrame.
 *   Valida o volume final por ano, confirmando a integridade do pipeline de streaming.
-*   Ponto de partida para a futura construção da camada Gold com agregações analíticas.
+*   <img width="917" height="569" alt="Captura de Tela 2026-07-13 às 22 47 13" src="https://github.com/user-attachments/assets/6b00b451-98c8-4920-a45d-601fae9874f7" />
+*   cria as dimensoes de mmunicipio e estado, para baixar o uso de dados repetidos na fato - diminui o uso de espaço no S3
+**Cria a fato Alfabetização** já aplicando as regras de negócio
+<img width="513" height="236" alt="Captura de Tela 2026-07-13 às 22 50 24" src="https://github.com/user-attachments/assets/f29f7312-8106-4456-adb1-ac851749e936" />
+*     dropa colunas que não são usadas nas analises
+*     agrupa por ano, escola, municipio, uf, tipo dependencia/tipo rede e série
+*     ccria as principais métrica por esses agurpamentos, como:
+*         qt alunos
+*         qt presente na prova de lingua portuguesa
+*         qt que preencheu a proca
+*         qt que estão acima do indice de alfabetização brasil
+*         média, mediana, min, máx, desvio e variancia da nota
+*         quartis
+*         abstenção
+*         ranking de escola por municipio, estado e brasil
+*     salva na camada gold do S3.
+*     Faz um merge com as metas de Estado e municípios para comparar no futuro
+*     grava na gold do S3   
+  
+
 
 ---
 
