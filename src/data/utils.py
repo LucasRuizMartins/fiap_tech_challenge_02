@@ -201,16 +201,6 @@ def salvar_parquet_local(df: pd.DataFrame, caminho_destino: Path | str, index: b
     #print(f"Arquivo salvo localmente em: {caminho_destino}")
 
 
-def salvar_parquet_s3(s3_client, bucket: str, chave_s3: str, parquet_bytes: bytes) -> None:
-    """
-    Envia os bytes de um arquivo Parquet diretamente para um bucket no S3.
-    """
-    s3_client.put_object(
-        Bucket=bucket,
-        Key=chave_s3,
-        Body=parquet_bytes
-    )
-   # print(f"Arquivo enviado para o S3: s3://{bucket}/{chave_s3}")
 
 
 #-----------QUALIDADE-------------
@@ -333,31 +323,6 @@ def enriquecer_alunos_silver(df_alunos: pd.DataFrame, municipio_dim: pd.DataFram
 
     return df_silver
 
-
-#---------------AWS 
-import boto3
-import dotenv
-import os 
-
-
-dotenv.load_dotenv()
-
-# Criando a cessão 
-
-def iniciar_cessao_aws():
-    ID_CONTA = os.getenv("ID_CONTA")
-    AWS_REGION = os.getenv("AWS_REGION")
-    AWS_ACCESS_KEY_ID=os.getenv("AWS_ACESS_KEY_ID")
-    AWS_SECRET_ACCESS_KEY=os.getenv("AWS_SECRET_ACESS_KEY")
-
-
-    session = boto3.Session(
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        region_name=AWS_REGION
-    )
-    return session
-
 #-- carregar parquet por camada do s3
 def carregar_parquet_s3(
     s3_client,
@@ -477,3 +442,29 @@ def salvar_parquet_s3(
     print(f"Arquivo salvo: s3://{bucket}/{chave}")
 
     return chave
+
+
+#---------------AWS 
+import boto3
+import dotenv
+import os 
+
+
+dotenv.load_dotenv()
+
+# Criando a cessão 
+
+def iniciar_cessao_aws():
+    ID_CONTA = os.getenv("ID_CONTA")
+    AWS_REGION = os.getenv("AWS_REGION")
+    AWS_ACCESS_KEY_ID=os.getenv("AWS_ACESS_KEY_ID")
+    AWS_SECRET_ACCESS_KEY=os.getenv("AWS_SECRET_ACESS_KEY")
+
+
+    session = boto3.Session(
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name=AWS_REGION
+    )
+    return session
+
