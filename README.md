@@ -10,9 +10,9 @@ Segundo projeto de Data Science da Pós Tech FIAP — Pipeline de Dados com Arqu
     ├── README.md              <- Documentação principal do projeto.
     ├── data
     │   ├── raw                <- Dados brutos originais (imutáveis) baixados do INEP.
-    │   ├── bronze             <- Dados convertidos para Parquet (estrutura: ano=YYYY/dados/ e ano=YYYY/dicionario/)
-    │   ├── prata              <- Dados enriquecidos da camada Silver (Stream-Static Join)
-    │   └── ouro               <- Dados agregados da camada Gold (a construir)
+    │   ├── bronze             <- Dados convertidos para Parquet - grava no S3 (estrutura: ano=YYYY/dados/ e ano=YYYY/dicionario/)
+    │   ├── silver             <- Dados enriquecidos da camada Silver - carrega do S3 e grava no S3 (Stream-Static Join)
+    │   └── gold               <- Dados agregados da camada Gold - carrega do S3 e grava no S3 
     │
     ├── docs                   <- Documentação adicional do projeto.
     ├── models                 <- Modelos treinados e serializados.
@@ -26,6 +26,8 @@ Segundo projeto de Data Science da Pós Tech FIAP — Pipeline de Dados com Arqu
     │   ├── __init__.py        <- Torna `src` um módulo Python.
     │   ├── data
     │   │   ├── make_dataset.py
+    │   │   ├── metadata.py    <- Funções utilitárias para geral catalogo e relatório de Data Quality
+    │   │   ├── quality.py     <- Funções para a aplicação do Data Quality - na camada silver
     │   │   └── utils.py       <- Funções utilitárias centrais do pipeline (leitura, escrita, transformação, AWS)
     │   ├── features
     │   │   └── build_features.py
@@ -50,7 +52,12 @@ O projeto implementa uma arquitetura **Medallion** híbrida (Streaming + Batch):
 
 ### 1. Ingestão & Enriquecimento (Bronze ➔ Silver) — IMPLEMENTADO
 O processamento da camada Bronze para a Silver pode ser executado em dois modos:
-* **Modo Batch (Local):** Processa o histórico completo de 2023, 2024 e 2025 diretamente no notebook `02 - pipeline_bronze_silver_local.ipynb`.
+* **Modo Batch (Local):** Processa o histórico completo de 2023, 2024 e 2025 diretamente no notebook `02 - pipeline_bronze_silver.ipynb`.
+*     Copia os arquivos da camada bronze para a silver, dentro da estrutura ano
+*     Aplica as regras de quality com base no dicionário carregado do INEP
+*     remove linhas vazias dos arquivos, remove arquivos duplicados, trata nulos, padroniza textos (data_types), converte colunas CHAVES em inteiro
+*     gera um relatório de quality
+*     grava as bases padronizadas na camada silver
 * **Modo Streaming (AWS):** Envia dados do produtor local via Kafka para uma função **AWS Lambda** que consome, enriquece (Stream-Static Join) e salva na camada Silver do S3 em tempo real.
 
 ```text
@@ -81,8 +88,14 @@ O processamento da camada Bronze para a Silver pode ser executado em dois modos:
                                              AWS STS / Lambda API
 ```
 
-### 2. Agregações Analíticas (Silver ➔ Gold) — PROPOSTA / TRABALHO FUTURO
-A leitura e consolidação inicial da Silver a partir do S3 já está mapeada via Pandas no notebook `04 - pipeline_silver_gold.ipynb`. Como trabalho futuro para produção, propõe-se:
+### 2. Agregações Analíticas (Silver ➔ Gold) — IMPLEMENTADO
+*    A leitura e consolidação inicial da Silver a partir do S3 já está mapeada via Pandas no notebook `04 - pipeline_silver_gold.ipynb`. 
+*    Lê as tabelas da camada silver, concatenando os anos e salvando as tabelas históricas tratadas na gold
+*    Cria dimensões Municípios e Estados na gold
+*    Gera a tabela Fato Alfabetização, com as métricas de quantidade de alunos, absteção na prova de linguaportuguesa, quantidade de respondentes da prova, quantidade de alunos alfabetizados, notas mínimas, máximas, médias, desvio, mediana e variância por ano, municipio, estado, escola, série e tipo de rede/dependencia.
+*    Além disso, foi gerados os quartis, amplitude das notas e um ranking de escolas por municipio, estado e um ranking brasil.
+
+Como trabalho futuro para produção, propõe-se:: 
 * **Amazon Athena + Glue Data Catalog:** Criação de queries SQL diretas no S3 para gerar tabelas analíticas Gold (ex: médias consolidadas por UF e Município), minimizando custos (FinOps) e complexidade de infraestrutura.
 * **Alternative (AWS Glue Job):** Caso o volume de dados escale para centenas de gigabytes, um Glue Job (Spark Batch) poderá ser agendado para consolidar os micro-lotes da Silver em tabelas Gold.
 
@@ -126,13 +139,15 @@ O arquivo [`utils.py`](src/data/utils.py) centraliza todas as funções utilitá
 
 *   **`salvar_parquet_local(df, caminho_destino, index=True)`**: Grava um DataFrame em Parquet localmente. Cria automaticamente qualquer subdiretório inexistente (ex: `data/bronze/ano=2023/dados/`).
 
-*   **`salvar_parquet_s3(s3_client, bucket, chave_s3, parquet_bytes)`**: Realiza upload direto de bytes Parquet para o S3 no caminho lógico fornecido.
+*   **`salvar_parquet_s3(s3_client, bucket, df, tabela, camada, ler_dicionario, index)`**: Realiza upload direto de bytes Parquet para o S3 no caminho lógico fornecido.
 
 ### Funções de Transformação (Bronze → Silver)
 
 *   **`preparar_dimensoes_silver(ano, path_bronze)`**: Carrega `TS_MUNICIPIO` e `TS_ESTADO` da Bronze, realiza o pivot por `ID_TIPO_REDE` (FEDERAL, ESTADUAL, MUNICIPAL, PRIVADA, etc.) e retorna dois DataFrames de dimensões normalizados prontos para merge. Aplica fallback automático `TOTAL → PUBLICA_EST_MUN` para municípios sem redes federal ou privada.
 
 *   **`enriquecer_alunos_silver(df_alunos, municipio_dim, uf_dim)`**: Aplica o merge duplo (alunos ← município ← UF), calcula colunas derivadas (`DESVIO_MEDIA_MUNICIPIO`, `DESVIO_MEDIA_UF`) e remove colunas inativas (redes zeradas e Bloco 4 das provas). Compatível tanto com a base completa (batch) quanto com micro-lotes (streaming).
+
+*   carregar_parquet_s3(s3_client, bucket: str, ano: int, nome_tabela: str, camada: str, ler_dicionario: bool = False)
 
 ### Funções de Infraestrutura AWS
 
@@ -196,6 +211,8 @@ Os notebooks estão organizados sequencialmente pelas etapas do pipeline:
     *   Remove colunas inativas (redes zeradas e Bloco 4).
 *   Itera sobre os anos [2023, 2024, 2025] e salva em `data/prata/ano=YYYY/alunos_prata.parquet`.
 *   **Volume processado confirmado:** 1.747.439 (2023) · 2.120.560 (2024) · 2.222.792 (2025) registros.
+
+### `02 - pipeline_bronze_silver.ipynb`  
 
 ### `03 - pipeline_bronze_silver_kafka.ipynb`
 **Prototipagem e teste do fluxo de streaming** com Kafka (local via Docker + remoto via EC2):
