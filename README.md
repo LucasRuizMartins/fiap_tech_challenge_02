@@ -1,6 +1,10 @@
 # tech_challenge_02
 
 Segundo projeto de Data Science da Pós Tech FIAP — Pipeline de Dados com Arquitetura Medallion + Streaming via Kafka e AWS Lambda.
+**Criação de pipeline para ingestão da avaliação Nacional de Alfabetização aplicada pelo INEP e geração de bases limpas e consolidadas para geração de métricas que apoiem a gestão publica a alcançar as O Compromisso Nacional Criança Alfabetizada, atingindo as metas progressivas até 2030 estabelecidas pelo governo federal.**
+
+## Link para o PPT: https://docs.google.com/presentation/d/15jR9jsKI7HbIyjquQ4iUYBPmg2bCZFF9/edit?slide=id.g3f3a7f4bbbd_0_3#slide=id.g3f3a7f4bbbd_0_3 
+    Na última página contem o link para o video executivo e um video apresentando o kafka+lambda funcionando
 
 ## Organização do Projeto
 
